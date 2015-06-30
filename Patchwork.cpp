@@ -322,7 +322,24 @@ int Patchwork::MaxRows()
 
 int Patchwork::MaxCols()
 {
-	return MaxCols_;
+    return MaxCols_;
+}
+
+void Patchwork::Release()
+{
+    if (Forwards_)
+    {
+        fftwf_destroy_plan(Forwards_);
+        Forwards_ = 0;
+    }
+    if (Inverse_)
+    {
+        fftwf_destroy_plan(Inverse_);
+        Inverse_ = 0;
+    }
+    MaxRows_ = 0;
+    MaxCols_ = 0;
+    HalfCols_ = 0;
 }
 
 void Patchwork::TransformFilter(const HOGPyramid::Level & filter, Filter & result)

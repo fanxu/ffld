@@ -92,6 +92,9 @@ public:
 	
 	/// Returns the current maximum number of columns of a pyramid level (including padding).
 	static int MaxCols();
+
+    /// Release the fftw
+    static void Release();
 	
 	/// Returns a transformed version of a filter to be used by the @c convolve method.
 	/// @param[in] filter Filter to transform.
