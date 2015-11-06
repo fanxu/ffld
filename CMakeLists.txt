@@ -21,7 +21,7 @@ ENDIF()
 # Also list the headers so that they are displayed along the .cpp files in the IDE
 SET(HEADERS Rectangle.h JPEGImage.h Object.h Scene.h HOGPyramid.h Patchwork.h Model.h Mixture.h Intersector.h)
 SET(SOURCES Rectangle.cpp JPEGImage.cpp Object.cpp Scene.cpp HOGPyramid.cpp Patchwork.cpp Model.cpp Mixture.cpp)
-ADD_EXECUTABLE(ffld ${HEADERS} ${SOURCES} ffld.cpp)
+ADD_LIBRARY(ffld SHARED ${HEADERS} ${SOURCES} ffld.cpp)
 
 # Define the options
 IF(FFLD_HOGPYRAMID_FELZENSZWALB_FEATURES)
