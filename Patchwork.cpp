@@ -66,26 +66,25 @@ interval_(pyramid.interval())
 		return;
 	
 	planes_.resize(nbPlanes);
+
+	// Construct the input (and output) for fft computation
+	vector<HOGPyramid::Level> input(nbPlanes);
 	
 	for (int i = 0; i < nbPlanes; ++i) {
-		planes_[i] = Plane::Constant(MaxRows_, HalfCols_, Cell::Zero());
-		
-		Map<HOGPyramid::Level, Aligned>
-			plane(reinterpret_cast<HOGPyramid::Cell *>(planes_[i].data()), MaxRows_, HalfCols_ * 2);
+		planes_[i] = Plane(MaxRows_, HalfCols_);
+		input[i]   = HOGPyramid::Level::Constant(MaxRows_, MaxCols_, HOGPyramid::Cell::Zero());
 		
 		// Set the last feature to 1
 		for (int y = 0; y < MaxRows_; ++y)
 			for (int x = 0; x < MaxCols_; ++x)
-				plane(y, x)(HOGPyramid::NbFeatures - 1) = 1.0f;
+				input[i](y, x)(HOGPyramid::NbFeatures - 1) = 1.0f;
 	}
 	
 	// Recopy the pyramid levels into the planes
 	for (int i = 0; i < nbLevels; ++i) {
-		Map<HOGPyramid::Level, Aligned>
-			plane(reinterpret_cast<HOGPyramid::Cell *>(planes_[rectangles_[i].second].data()),
-				  MaxRows_, HalfCols_ * 2);
-		
-		plane.block(rectangles_[i].first.y(), rectangles_[i].first.x(),
+		int plane_id = rectangles_[i].second;
+
+		input[plane_id].block(rectangles_[i].first.y(), rectangles_[i].first.x(),
 					rectangles_[i].first.height(), rectangles_[i].first.width()) =
 			pyramid.levels()[i].topLeftCorner(rectangles_[i].first.height(),
 											  rectangles_[i].first.width());
@@ -96,10 +95,10 @@ interval_(pyramid.interval())
 #pragma omp parallel for private(i)
 	for (i = 0; i < nbPlanes; ++i)
 #ifndef FFLD_HOGPYRAMID_DOUBLE
-		fftwf_execute_dft_r2c(Forwards_, reinterpret_cast<float *>(planes_[i].data()->data()),
+		fftwf_execute_dft_r2c(Forwards_, reinterpret_cast<float *>(input[i].data()->data()),
 							  reinterpret_cast<fftwf_complex *>(planes_[i].data()->data()));
 #else
-		fftw_execute_dft_r2c(Forwards_, reinterpret_cast<double *>(planes_[i].data()->data()),
+		fftw_execute_dft_r2c(Forwards_, reinterpret_cast<double *>(input[i].data()->data()),
 							 reinterpret_cast<fftw_complex *>(planes_[i].data()->data()));
 #endif
 }
@@ -174,7 +173,7 @@ void Patchwork::convolve(const vector<Filter> & filters,
 		for (int j = 0; j < nbFilters; ++j)
 			for (int k = 0; k < nbPlanes; ++k)
 				sums[j][k](i) = filters[j].first(i).cwiseProduct(planes_[k](i)).sum();
-	
+
 	// Transform back the results and store them in convolutions
 	convolutions.resize(nbFilters);
 	
@@ -234,8 +233,9 @@ bool Patchwork::Init(int maxRows, int maxCols, bool cacheWisdom)
 		return false;
 	
 	// Temporary matrices
-	HOGPyramid::Matrix tmp(maxRows * HOGPyramid::NbFeatures, maxCols + 2);
-	
+	HOGPyramid::Matrix tmp_in(maxRows * HOGPyramid::NbFeatures, maxCols + 2);
+	HOGPyramid::Matrix tmp_out(maxRows * HOGPyramid::NbFeatures, maxCols + 2);
+
 	int dims[2] = {maxRows, maxCols};
 	
 #ifndef FFLD_HOGPYRAMID_DOUBLE
@@ -252,15 +252,15 @@ bool Patchwork::Init(int maxRows, int maxCols, bool cacheWisdom)
     }
 	
 	const fftwf_plan forwards =
-		fftwf_plan_many_dft_r2c(2, dims, HOGPyramid::NbFeatures, tmp.data(), 0,
+		fftwf_plan_many_dft_r2c(2, dims, HOGPyramid::NbFeatures, tmp_in.data(), 0,
 								HOGPyramid::NbFeatures, 1,
-								reinterpret_cast<fftwf_complex *>(tmp.data()), 0,
-								HOGPyramid::NbFeatures, 1, FFTW_PATIENT);
-	
+								reinterpret_cast<fftwf_complex *>(tmp_out.data()), 0,
+								HOGPyramid::NbFeatures, 1, FFTW_ESTIMATE);
+
 	const fftwf_plan inverse =
-		fftwf_plan_dft_c2r_2d(dims[0], dims[1], reinterpret_cast<fftwf_complex *>(tmp.data()),
-							  tmp.data(), FFTW_PATIENT);
-	
+		fftwf_plan_dft_c2r_2d(dims[0], dims[1], reinterpret_cast<fftwf_complex *>(tmp_in.data()),
+							  tmp_in.data(), FFTW_ESTIMATE);
+
     if (cacheWisdom)
     {
         FILE * file = fopen("wisdom.fftw", "w");
@@ -282,14 +282,14 @@ bool Patchwork::Init(int maxRows, int maxCols, bool cacheWisdom)
     }
 	
 	const fftw_plan forwards =
-		fftw_plan_many_dft_r2c(2, dims, HOGPyramid::NbFeatures, tmp.data(), 0,
+		fftw_plan_many_dft_r2c(2, dims, HOGPyramid::NbFeatures, tmp_in.data(), 0,
 							   HOGPyramid::NbFeatures, 1,
-							   reinterpret_cast<fftw_complex *>(tmp.data()), 0,
+							   reinterpret_cast<fftw_complex *>(tmp_out.data()), 0,
 							   HOGPyramid::NbFeatures, 1, FFTW_PATIENT);
 	
 	const fftw_plan inverse =
-		fftw_plan_dft_c2r_2d(dims[0], dims[1], reinterpret_cast<fftw_complex *>(tmp.data()),
-							 tmp.data(), FFTW_PATIENT);
+		fftw_plan_dft_c2r_2d(dims[0], dims[1], reinterpret_cast<fftw_complex *>(tmp_in.data()),
+							 tmp_in.data(), FFTW_PATIENT);
 	
     if (cacheWisdom)
     {
@@ -351,23 +351,22 @@ void Patchwork::TransformFilter(const HOGPyramid::Level & filter, Filter & resul
 	}
 	
 	// Recopy the filter into a plane
-	result.first = Plane::Constant(MaxRows_, HalfCols_, Cell::Zero());
+	result.first = Plane(MaxRows_, HalfCols_);
 	result.second = pair<int, int>(filter.rows(), filter.cols());
 	
-	Map<HOGPyramid::Level, Aligned> plane(reinterpret_cast<HOGPyramid::Cell *>(result.first.data()),
-										  MaxRows_, HalfCols_ * 2);
+	HOGPyramid::Level input = HOGPyramid::Level::Constant(MaxRows_, MaxCols_, HOGPyramid::Cell::Zero());
 	
 	for (int y = 0; y < filter.rows(); ++y)
 		for (int x = 0; x < filter.cols(); ++x)
-			plane((MaxRows_ - y) % MaxRows_, (MaxCols_ - x) % MaxCols_) = filter(y, x) /
+			input((MaxRows_ - y) % MaxRows_, (MaxCols_ - x) % MaxCols_) = filter(y, x) /
 																		  (MaxRows_ * MaxCols_);
 	
 	// Transform that plane	
 #ifndef FFLD_HOGPYRAMID_DOUBLE
-	fftwf_execute_dft_r2c(Forwards_, reinterpret_cast<float *>(plane.data()->data()),
+	fftwf_execute_dft_r2c(Forwards_, reinterpret_cast<float *>(input.data()->data()),
 						  reinterpret_cast<fftwf_complex *>(result.first.data()->data()));
 #else
-	fftw_execute_dft_r2c(Forwards_, reinterpret_cast<double *>(plane.data()->data()),
+	fftw_execute_dft_r2c(Forwards_, reinterpret_cast<double *>(input.data()->data()),
 						 reinterpret_cast<fftw_complex *>(result.first.data()->data()));
 #endif
 }
