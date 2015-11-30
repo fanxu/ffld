@@ -9,6 +9,8 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 
 PROJECT(FFLD)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+
 # The build options
 OPTION(FFLD_HOGPYRAMID_FELZENSZWALB_FEATURES "Use Felzenszwalb's original features (slower and not as accurate, provided for compatibility only)." OFF)
 OPTION(FFLD_HOGPYRAMID_DOUBLE "Use doubles instead of floats (slower, uses twice more memory, and the increase in precision is not necessarily useful)." OFF)
@@ -21,7 +23,10 @@ ENDIF()
 # Also list the headers so that they are displayed along the .cpp files in the IDE
 SET(HEADERS Rectangle.h JPEGImage.h Object.h Scene.h HOGPyramid.h Patchwork.h Model.h Mixture.h Intersector.h)
 SET(SOURCES Rectangle.cpp JPEGImage.cpp Object.cpp Scene.cpp HOGPyramid.cpp Patchwork.cpp Model.cpp Mixture.cpp)
-ADD_LIBRARY(ffld SHARED ${HEADERS} ${SOURCES} ffld.cpp)
+ADD_LIBRARY(ffld STATIC ${HEADERS} ${SOURCES})
+ADD_EXECUTABLE(ffld_cmd ffld.cpp)
+target_link_libraries(ffld_cmd ffld)
+
 
 # Define the options
 IF(FFLD_HOGPYRAMID_FELZENSZWALB_FEATURES)
@@ -51,18 +56,18 @@ IF(NOT FFTW3_INCLUDE_DIR OR NOT FFTW3_LIBRARIES)
   MESSAGE(FATAL_ERROR "Could not find fftw3.")
 ENDIF()
 INCLUDE_DIRECTORIES(${FFTW3_INCLUDE_DIR})
-TARGET_LINK_LIBRARIES(ffld ${FFTW3_LIBRARIES})
+TARGET_LINK_LIBRARIES(ffld_cmd ${FFTW3_LIBRARIES})
 
 FIND_PACKAGE(JPEG REQUIRED)
 IF(JPEG_FOUND)
   INCLUDE_DIRECTORIES(${JPEG_INCLUDE_DIR})
-  TARGET_LINK_LIBRARIES(ffld ${JPEG_LIBRARIES})
+  TARGET_LINK_LIBRARIES(ffld_cmd ${JPEG_LIBRARIES})
 ENDIF()
 
 FIND_PACKAGE(LibXml2 REQUIRED)
 IF(LIBXML2_FOUND)
   INCLUDE_DIRECTORIES(${LIBXML2_INCLUDE_DIR})
-  TARGET_LINK_LIBRARIES(ffld ${LIBXML2_LIBRARIES})
+  TARGET_LINK_LIBRARIES(ffld_cmd ${LIBXML2_LIBRARIES})
   ADD_DEFINITIONS(${LIBXML2_DEFINITIONS})
 ENDIF()
 
